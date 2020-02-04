@@ -1,7 +1,5 @@
 <?php
-
 namespace SocialiteProviders\Slack;
-
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\HandlerStack;
@@ -12,6 +10,7 @@ use SocialiteProviders\Manager\OAuth2\User;
 
 class Provider extends AbstractProvider
 {
+	protected $userscopes = [];
     /**
      * Unique Provider Identifier.
      */
@@ -37,6 +36,24 @@ class Provider extends AbstractProvider
         // See: https://github.com/SocialiteProviders/Providers/pull/53
         return ['identity.basic', 'identity.email', 'identity.team', 'identity.avatar'];
     }
+	/**
+     * {@inheritdoc}
+     */
+    public function getUserScopes()
+    {
+		if (count($this->userscopes) > 0) {
+            return $this->userscopes;
+        }
+        return ['identity.basic', 'identity.email', 'identity.team', 'identity.avatar'];
+    } 
+	
+	public function userScopes($scopes)
+    {
+        $this->userscopes = array_unique(array_merge($this->scopes, (array) $scopes));
+        return $this;
+    }
+	
+	
 
     /**
      * Middleware that throws exceptions for non successful slack api calls
@@ -88,9 +105,26 @@ class Provider extends AbstractProvider
      */
     protected function getAuthUrl($state)
     {
-        return $this->buildAuthUrlFromBase(
-            'https://slack.com/oauth/authorize', $state
+		return $this->buildAuthUrlFromBase(
+            'https://slack.com/oauth/v2/authorize', $state
         );
+    }
+	
+	protected function getCodeFields($state = null)
+    {
+        $fields = [
+            'client_id' => $this->clientId,
+            'redirect_uri' => $this->redirectUrl,
+            'scope' => $this->formatScopes($this->getScopes(), $this->scopeSeparator),
+            'user_scope' => $this->formatScopes($this->getUserScopes(), $this->scopeSeparator),
+            'response_type' => 'code',
+        ];
+
+        if ($this->usesState()) {
+            $fields['state'] = $state;
+        }
+
+        return array_merge($fields, $this->parameters);
     }
 
     /**
@@ -98,7 +132,7 @@ class Provider extends AbstractProvider
      */
     protected function getTokenUrl()
     {
-        return 'https://slack.com/api/oauth.access';
+        return 'https://slack.com/api/oauth.v2.access';
     }
 
     /**
@@ -141,4 +175,11 @@ class Provider extends AbstractProvider
             'organization_id' => Arr::get($user, 'team.id'),
         ]);
     }
+	
+	 protected function parseAccessToken($body)
+    {
+		 dd($body);
+        return Arr::get($body, 'authed_user.access_token');
+    }
+
 }
